@@ -4,16 +4,8 @@ from DbConnector import DbConnector
 from tabulate import tabulate
 from decouple import config
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-
-dataset_base_path = os.path.join(current_dir, 'dataset', 'dataset')
-
-connection = DbConnector(HOST=config('HOST'), DATABASE=config('DATABASE'), USER=config('USER'), PASSWORD=config('PASSWORD'))
-db_connection = connection.db_connection
-cursor = connection.cursor
-
 def drop_all_tables():
-    query = """DROP TABLE TrackPoint, Activity, User
+    query = """DROP TABLE IF EXISTS TrackPoint, Activity, User 
                 """
     # This adds table_name to the %s variable and executes the query
     cursor.execute(query)
@@ -59,11 +51,11 @@ def get_all_user_data(data_path):
     # create for each user entry in list to insert them all in once
     all_users = os.listdir(data_path)
     # transform it in tuple with (id, has_labels) set has_labels to False for all
-    all_users = [(u, False) for u in all_users]
+    all_users = [(u, 0) for u in all_users]
     with open(os.path.join(dataset_base_path, 'labeled_ids.txt')) as f:
         for line in f.readlines():
             # update all entries with idx in file to has_labels = True
-            all_users[int(line.strip())] = (all_users[int(line.strip())][0], True)
+            all_users[int(line.strip())] = (all_users[int(line.strip())][0], 1)
     
     return all_users
 
@@ -114,40 +106,45 @@ def get_labels_as_df(file_path):
     temp['End Time'] = pd.to_datetime(temp['End Time'])
     return temp
 
-drop_all_tables()
-create_user_table()
-create_activity_table()
-create_trackpoint_table()
-all_users = get_all_user_data(os.path.join(dataset_base_path, 'Data'))
-upload_users_batch(all_users)
+if __name__ == '__main__':
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    dataset_base_path = os.path.join(current_dir, 'dataset', 'dataset')
 
-current_activity_id = 0
-for user in os.listdir(os.path.join(dataset_base_path, 'Data')):
-    print("User", user)
-    base_path = os.path.join(dataset_base_path, 'Data', user)
-    labels_exists = os.path.exists(os.path.join(base_path, 'labels.txt'))
-    if labels_exists:
-        df_labels = get_labels_as_df(os.path.join(base_path, 'labels.txt'))
-    for activity in os.listdir(os.path.join(base_path, 'Trajectory')):
-        path_activity = os.path.join(base_path,'Trajectory',activity)
-        activity_df = get_trackpoints_as_df(path_activity)
-        if activity_df.shape[0] <= 2500:
-            start_time = activity_df.head(1).values[0][0]
-            end_time = activity_df.tail(1).values[0][0]
-            transportation_label = ''
-            if labels_exists:
-                matching_row = df_labels.loc[(df_labels['Start Time'] == start_time) & ((df_labels['End Time']) == end_time)]
-                if matching_row.shape[0] > 0:
-                    transportation_label = matching_row.values[0][2]
-            
-            upload_single_activity((current_activity_id, user, transportation_label, start_time.strftime('%Y-%m-%d %H:%M:%S'), end_time.strftime('%Y-%m-%d %H:%M:%S')))
-            
-            activity_df.drop(columns=['date_time'], inplace=True)
-            activity_df['activity_id'] = current_activity_id
-            activity_df = activity_df.reindex(columns=['activity_id', 'Latitude', 'Longitude', 'Altitude', 'date_days', 'Date'])
-            upload_trackpoints_batch(list(activity_df.itertuples(index=False, name=None)))
-        
-        current_activity_id += 1
+    connection = DbConnector(HOST=config('HOST'), DATABASE=config('DATABASE'), USER=config('USER'), PASSWORD=config('PASSWORD'))
+    db_connection = connection.db_connection
+    cursor = connection.cursor
 
+    drop_all_tables()
+    create_user_table()
+    create_activity_table()
+    create_trackpoint_table()
+    all_users = get_all_user_data(os.path.join(dataset_base_path, 'Data'))
+    upload_users_batch(all_users)
 
+    current_activity_id = 0
+    for user in os.listdir(os.path.join(dataset_base_path, 'Data')):
+        print("User", user)
+        base_path = os.path.join(dataset_base_path, 'Data', user)
+        labels_exists = os.path.exists(os.path.join(base_path, 'labels.txt'))
+        if labels_exists:
+            df_labels = get_labels_as_df(os.path.join(base_path, 'labels.txt'))
+        for activity in os.listdir(os.path.join(base_path, 'Trajectory')):
+            path_activity = os.path.join(base_path,'Trajectory',activity)
+            activity_df = get_trackpoints_as_df(path_activity)
+            if activity_df.shape[0] <= 2500:
+                start_time = activity_df.head(1).values[0][0]
+                end_time = activity_df.tail(1).values[0][0]
+                transportation_label = ''
+                if labels_exists:
+                    matching_row = df_labels.loc[(df_labels['Start Time'] == start_time) & ((df_labels['End Time']) == end_time)]
+                    if matching_row.shape[0] > 0:
+                        transportation_label = matching_row.values[0][2]
+                
+                upload_single_activity((current_activity_id, user, transportation_label, start_time.strftime('%Y-%m-%d %H:%M:%S'), end_time.strftime('%Y-%m-%d %H:%M:%S')))
+                
+                activity_df.drop(columns=['date_time'], inplace=True)
+                activity_df['activity_id'] = current_activity_id
+                activity_df = activity_df.reindex(columns=['activity_id', 'Latitude', 'Longitude', 'Altitude', 'date_days', 'Date'])
+                upload_trackpoints_batch(list(activity_df.itertuples(index=False, name=None)))
             
+            current_activity_id += 1
