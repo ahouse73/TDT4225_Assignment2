@@ -1,5 +1,5 @@
 import os
-import tabulate
+from tabulate import tabulate
 from DbConnector import DbConnector
 from decouple import config
 
@@ -18,10 +18,16 @@ if __name__ == '__main__':
     current_dir = os.path.dirname(os.path.abspath(__file__))
     dataset_base_path = os.path.join(current_dir, 'dataset', 'dataset')
 
-    connection = DbConnector(HOST=config('HOST'), DATABASE=config('DATABASE'), USER=config('USER'), PASSWORD=config('PASSWORD'))
+    connection = DbConnector(HOST=config('HOST'), DATABASE=config('DATABASE'), USER=config('USERNAME'), PASSWORD=config('PASSWORD'))
     db_connection = connection.db_connection
     cursor = connection.cursor
     
     fetch_data_a()
     fetch_data_b()
 
+
+    result_a = fetch_data_a()
+    print(tabulate(result_a, headers=["Number Of Users"]))
+    
+    result_b = fetch_data_b()
+    print(tabulate(result_b[:10], headers=["Mode", "UserID", "Duration"]))
